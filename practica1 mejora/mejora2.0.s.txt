@@ -1,0 +1,133 @@
+.globl main
+
+.data 0x10000000
+
+frase: .asciiz "Mis hermanos, veo en vuestros ojos el mismo miedo que encogeria mi propio corazon \n"
+pulsacion: .asciiz "[Pulsacion("
+num: .space 4
+cierre: .asciiz ") = "
+corchete: .asciiz "]"
+separador: .asciiz " : "
+askhour: .asciiz "\n Indique una hora por favor "
+askminute: .asciiz "\n ahora indique los minutos "
+asksecond: .asciiz "\n por ultimo indique los segundos "
+wronghour: .asciiz "\n hora incorrecta\n"
+wrongminute: .asciiz "\n minuto incorrecto\n"
+wrongsecond: .asciiz "\n segundo incorrecto\n"
+salto: .asciiz "\n"
+horaLocal: .asciiz " Hora local --> "
+firsttyped: .space 20
+
+
+buffer: .space 50
+str1:  .asciiz "\nEscriba una frase por favor (max. 50 caracteres contando enter): \n"
+str2:  .asciiz "Usted escribió:\n"	
+
+.data 0xFFFF0000
+
+tcontrol: .space 4
+tdata: .space 4
+pcontrol: .space 4
+pdata: .space 4
+
+.text
+main:
+	lw $a3, tcontrol			
+	ori $a3, $a3, 0x2			#habilitamos la interrupcion del registro en el bit 1(inte)
+	sw $a3, tcontrol			
+	sw $a3, tcontrol			
+	mfc0 $t0, $12				#cargamos status de coprocesador 0
+	ori $t0, $t0, 0x39			
+	mtc0 $t0, $12				#devolvemos status a coprocesador 0 	
+	la $s0, frase				
+	li $a3, 1000
+	mtc0 $a3, $11				#cargamos el valor de actualizacion de timer en el compare
+	
+inicializa:						
+	li $a1, 50000				#valor para el delay
+	jal printcharac
+	jal delay
+	addi $s0, $s0, 1
+	j  inicializa
+
+printcharac:
+	lb $t6, ($s0)				
+	beqz $t6, main				
+	lw $t3, pcontrol			
+	andi $t1, $t3, 1 			
+	beqz $t1, printcharac		#comprobamos que el bit 0 esta a 1 para saber que la pantalla esta preparada
+	sb $t6, pdata				
+	
+	jr $31
+
+delay:	
+	addi $a1, $a1, -1
+	bnez $a1, delay
+	
+	jr $31
+	
+CaseIntr:
+	andi $a0, $k0, 0x800 		#activamos las interrupciones de teclado (iP3 (bit 12))
+	beq $a0, 0x800, KbdIntr		#si se trata de una interrupcion de teclado
+	
+	jr $31
+	
+KbdIntr:
+	la $a2, tdata				#lee la dirección de la tecla pulsada
+	lw $a3, 0($a2)
+	
+	beq $a3, 0x13, ctrlS
+		
+	addi $t4, $t4, 1			#contador de pulsaciones
+	
+	li $v0, 4					#syscall 4 (print_str)				
+	la $a0, pulsacion
+	syscall
+	
+	li $v0, 1					#syscall 1 (print_integer)
+	move $a0, $t4
+	syscall
+	
+	li $v0, 4
+	la $a0, cierre
+	syscall
+	
+	li $v0, 11					#syscall 11 (print_char)
+	move $a0, $a3
+	syscall
+	
+	li $v0, 4
+	la $a0, corchete
+	syscall
+	
+	jr $31
+	
+ctrlS:
+	li $v0, 8
+    li $a1, 20
+    la $a0, firsttyped
+    syscall
+
+    li $v0, 4
+    li $t0, 0
+
+loop:
+    lb $t1, firsttyped($t0)
+    beq $t1, 0, exit
+	blt $t1, 97, not_lower
+	bgt $t1, 122, not_lower
+    sub $t1, $t1, 32
+    sb $t1, firsttyped($t0)
+not_lower:
+    addi $t0, $t0, 1
+    j loop
+
+
+exit:
+    li $v0, 4
+    la $a0, firsttyped
+    syscall
+
+	jr $31
+	
+	
